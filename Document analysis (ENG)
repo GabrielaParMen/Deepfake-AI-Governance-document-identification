@@ -1,0 +1,91 @@
+!pip install gspread wordcloud matplotlib pandas nltk
+import gspread
+
+#Authenticate with Google
+from google.colab import auth
+from google.auth import default
+auth.authenticate_user()
+
+# Get credentials and initialize gspread client
+creds, _ = default()
+gc = gspread.authorize(creds)
+from oauth2client.service_account import ServiceAccountCredentials
+
+#Import libraries
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+import nltk
+import re
+import string
+
+#Import NLTK
+nltk.download('punkt')
+nltk.download('stopwords')
+# Download 'punkt_tab'
+nltk.download('punkt_tab') # This line is added to download the necessary resource
+
+#Access to the DB on Google Sheets
+spreadsheet_url = #Insert here your Google Sheets link's document
+spreadsheet = gc.open_by_url(spreadsheet_url)
+worksheet = spreadsheet.worksheet("Lista de datos final") #Select the library of Google Sheets document
+
+# Deepfake keywords 
+keywords = [
+    "deepfakes", "audio", "video", "media", "created", "content", "synthetic",
+    "real", "manipulated", "realistic", "deepfake", "fake", "never", "image",
+    "someone", "voice", "saying", "something", "face"
+]
+
+# Define the function to clean the text and language
+def limpiar_texto(texto):
+    """Función para limpiar el texto eliminando puntuación y palabras vacías."""
+    texto = texto.lower()
+    texto = texto.translate(str.maketrans('', '', string.punctuation))
+    palabras = texto.split()
+    stop_words = set(stopwords.words('english'))  # Define stop_words here
+    palabras_limpiadas = [palabra for palabra in palabras if palabra not in stop_words]
+    return " ".join(palabras_limpiadas)
+
+
+# Which place are the data?
+celdas_origen = [""] #Put the specific cells with the location of your data
+
+# Get all cell values from the specified ranges
+all_cell_values = []
+for cell_range in celdas_origen:
+    cell_values = worksheet.get(cell_range)
+    # Flatten the list of lists (if range is more than one cell)
+    flat_values = [item for sublist in cell_values for item in sublist]
+    all_cell_values.extend(flat_values)
+
+# Filter out None values and process the data
+data = [value for value in all_cell_values if value is not None]
+
+# Process each row
+for i, texto in enumerate(data):
+    # Get the current row number (starting from 2) #Because the first cell is for the titles
+    row_number = i + 2
+
+    # Clean text
+    texto_limpio = limpiar_texto(texto)
+
+    # 1. Write clean text (row I)
+    worksheet.update_acell(f"I{row_number}", texto_limpio)
+
+    # 2.Search keywords (row J)
+    found_keywords = [kw for kw in keywords if kw in texto_limpio]
+    worksheet.update_acell(f"J{row_number}", ", ".join(found_keywords))
+
+    # 3. Detailed count (row K)
+    counts_str = "\n".join([f"{kw}: {texto_limpio.count(kw)}" for kw in set(found_keywords)])
+    worksheet.update_acell(f"K{row_number}", counts_str)
+
+    # Optional: Change formal
+    worksheet.format(f"K{row_number}", {
+        "wrapStrategy": "WRAP",
+        "verticalAlignment": "TOP"
+    })
+
+print("Procesamiento completado. Resultados escritos en columnas I, J y K.")
