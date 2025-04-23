@@ -1,0 +1,64 @@
+#Conteo de palabras clave
+
+# 1. Instalar librerías necesarias
+!pip install gspread nltk pandas
+
+# 2. Subir credenciales de Google Sheets (archivo JSON)
+# Authenticate with Google
+auth.authenticate_user()
+# Get credentials and initialize gspread client
+creds, _ = default()
+gc = gspread.authorize(creds)
+
+# 3. Importar librerías
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+import nltk
+from collections import Counter
+import pandas as pd
+
+# 4. Descargar recursos de NLTK
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('punkt_tab')
+
+# 6. Acceder a la hoja (cambiar URL y nombre de hoja)
+spreadsheet_url = "https://docs.google.com/spreadsheets/d/1kkOlsHoQ2sGN_3ITfXsoWbot16HM7TpvmzZPMn-wzrM/edit?gid=902308125#gid=902308125"
+spreadsheet = gc.open_by_url(spreadsheet_url)
+worksheet = spreadsheet.worksheet("Definiciones de deepfake") # Selección de hoja dentro del archivo (por nombre o índice)
+
+# *** Define column_data here ***
+# Assuming you want to analyze data from column 'A', for example:
+column_data = worksheet.col_values(1)  # Get all values from column A
+
+# 7. Función para limpiar y contar palabras
+def process_text_column(column, language='english'):
+    all_words = []
+    stop_words = set(stopwords.words(language))  # Get stop words for the specified language
+
+    for text in column:
+        if text:  # Ignorar celdas vacías
+            tokens = word_tokenize(text.lower())
+            # Filter out stop words and non-alphabetic tokens
+            filtered_words = [
+                word for word in tokens
+                if word.isalpha() and word not in stop_words and len(word) > 2
+            ]
+            all_words.extend(filtered_words)
+
+    word_counts = Counter(all_words)
+    return pd.DataFrame(word_counts.most_common(), columns=['Palabra', 'Frecuencia'])
+
+# 8. Procesar columna y mostrar resultados
+if column_data:
+    df_results = process_text_column(column_data)
+    print("📊 Top 20 palabras más frecuentes:")
+    display(df_results.head(20))
+
+    # Opcional: Guardar en CSV
+    #df_results.to_csv('word_counts.csv', index=False)
+    #files.download('word_counts.csv')  # Descargar archivo
+else:
+    print("❌ La columna está vacía o no se encontraron datos.")
