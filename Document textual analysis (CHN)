@@ -1,0 +1,82 @@
+# 1. Instalar librerías necesarias
+!pip install gspread pandas jieba
+
+# 2. Autenticación con Google
+from google.colab import auth
+auth.authenticate_user()
+import gspread
+from google.auth import default
+
+# 3. Configuración inicial
+creds, _ = default()
+gc = gspread.authorize(creds)
+
+# 4. Importar librerías
+import jieba
+import re
+from tqdm import tqdm
+
+# 5. Configurar Jieba para chino
+jieba.setLogLevel(jieba.logging.INFO)
+
+# 6. Acceder a la hoja
+spreadsheet_url = ""
+spreadsheet = gc.open_by_url(spreadsheet_url)
+worksheet = spreadsheet.worksheet("")
+
+# 7. Definir palabras clave en chino
+keywords = [
+    "深度伪造", "音频", "视频", "媒体", "创建",
+    "内容", "合成", "真实", "manipulated", "逼真",
+    "深度造假", "虚假", "从不", "图像", "某人",
+    "声音", "说", "某事", "面部"
+]
+
+# 8. Función para limpiar texto chino
+def limpiar_texto(texto):
+    """Función para limpiar texto en chino"""
+    if not isinstance(texto, str):
+        return ""
+
+    # Eliminar caracteres no chinos y puntuación
+    texto = re.sub(r'[^\u4e00-\u9fa5]+', ' ', texto)
+
+    # Segmentar palabras con Jieba
+    palabras = jieba.lcut(texto)
+
+    # Filtrar palabras muy cortas
+    palabras_limpiadas = [palabra for palabra in palabras if len(palabra) > 1]
+
+    return " ".join(palabras_limpiadas)
+
+# 9. Obtener datos del rango H75:H76
+celdas_origen = ["H104:H105"]  # Changed to process rows 75 and 76
+all_cell_values = []
+
+for cell_range in celdas_origen:
+    cell_values = worksheet.get(cell_range)
+    flat_values = [item for sublist in cell_values for item in sublist]
+    all_cell_values.extend(flat_values)
+
+data = [value for value in all_cell_values if value is not None]
+
+# 10. Procesar cada fila
+for i, texto in enumerate(tqdm(data, desc="Procesando filas")):
+    # Get the current row number (starting from 75) #Changed to start from 75
+    row_number = i + 104
+
+    # Limpiar texto
+    texto_limpio = limpiar_texto(texto)
+
+    # 1. Escribir texto limpio (columna I)
+    worksheet.update_acell(f"I{row_number}", texto_limpio)
+
+    # 2. Buscar palabras clave (columna J)
+    found_keywords = [kw for kw in keywords if kw in texto_limpio]
+    worksheet.update_acell(f"J{row_number}", ", ".join(found_keywords) if found_keywords else "无关键词")
+
+    # 3. Conteo detallado (columna K)
+    counts_str = "\n".join([f"{kw}: {texto_limpio.count(kw)}" for kw in set(found_keywords)]) if found_keywords else "无匹配"
+    worksheet.update_acell(f"K{row_number}", counts_str)
+
+print("\nProcesamiento completado. Resultados escritos en columnas I, J y K.")
