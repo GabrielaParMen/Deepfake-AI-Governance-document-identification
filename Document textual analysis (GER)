@@ -1,0 +1,77 @@
+!pip install gspread pandas nltk
+
+# 2. Google authentication
+from google.colab import auth
+auth.authenticate_user()
+import gspread
+from google.auth import default
+creds, _ = default()
+gc = gspread.authorize(creds)
+
+# 4. Import libraries
+import re
+import string
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+import nltk
+from tqdm import tqdm
+
+# 5. NTK for german
+nltk.download('punkt')
+nltk.download('stopwords')
+
+# 6. Access to the DB
+spreadsheet_url = "" #Insert here the link of Google Sheets document
+spreadsheet = gc.open_by_url(spreadsheet_url)
+worksheet = spreadsheet.worksheet("") #Insert here the library of the DB
+
+# 7. Translated German keywords of deepfake definitions 
+keywords = [
+    "deepfakes", "audio", "video", "medien", "erstellt", "inhalt", "synthetisch",
+    "echt", "manipuliert", "realistisch", "deepfake", "fälschung", "nie", "bild",
+    "jemand", "stimme", "sagend", "etwas", "gesicht"
+]
+
+# 8. Text cleansing on German
+def limpiar_texto(texto):
+    if not isinstance(texto, str):
+        return ""
+
+    texto = texto.lower()
+    texto = texto.translate(str.maketrans('', '', string.punctuation))
+    palabras = word_tokenize(texto, language='german')
+    stop_words = set(stopwords.words('german'))
+    palabras_limpiadas = [palabra for palabra in palabras if palabra not in stop_words and len(palabra) > 2]
+
+    return " ".join(palabras_limpiadas)
+
+# 9. Obtain data from specific cells
+celdas_origen = [""] #Put here the cells
+all_cell_values = []
+
+for cell_range in celdas_origen:
+    cell_values = worksheet.get(cell_range)
+    flat_values = [item for sublist in cell_values for item in sublist]
+    all_cell_values.extend(flat_values)
+
+data = [value for value in all_cell_values if value is not None]
+
+#Process each row
+for i, texto in enumerate(tqdm(data, desc="Procesando filas")):
+    row_number = i + 102 
+
+    # Text cleansing
+    texto_limpio = limpiar_texto(texto)
+
+    # Write text on row I
+    worksheet.update_acell(f"I{row_number}", texto_limpio)
+
+    # Write text on row J
+    found_keywords = [kw for kw in keywords if kw in texto_limpio]
+    worksheet.update_acell(f"J{row_number}", ", ".join(found_keywords) if found_keywords else "Keine Schlüsselwörter")
+
+    # Write detailed count on row K
+    counts_str = "\n".join([f"{kw}: {texto_limpio.count(kw)}" for kw in set(found_keywords)]) if found_keywords else "Keine Übereinstimmung"
+    worksheet.update_acell(f"K{row_number}", counts_str)
+
+print("\n✅ Procesamiento completado. Resultados escritos en columnas I, J y K.")
